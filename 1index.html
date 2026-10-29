@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Міні-гра "Збирач монет"</title>
+  <!-- Підключення бібліотеки p5.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1e1e2e;
+      color: #cdd6f4;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    #canvas-container {
+      border: 3px solid #89b4fa;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .instructions {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 0.95rem;
+      color: #a6adc8;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+  <div class="instructions">
+    Керування: <b>Стрілки клавиатури</b> або <b>WASD</b>.<br>
+    Збирайте жовті монети та ухиляйтеся від червоного ворога!
+  </div>
+
+  <script>
+    // Налаштування гри
+    let player;
+    let coin;
+    let enemy;
+    let score = 0;
+    let gameOver = false;
+    let lastFrameTime = 0;
+
+    // Звуковий ефект через Web Audio API (без зовнішніх mp3)
+    let audioCtx;
+
+    function playCoinSound() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1); // A5
+
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function setup() {
+      const canvas = createCanvas(600, 400);
+      canvas.parent('canvas-container');
+
+      resetGame();
+      lastFrameTime = millis();
+    }
+
+    function resetGame() {
+      score = 0;
+      gameOver = false;
+
+      player = {
+        x: width / 2,
+        y: height / 2,
+        r: 15,
+        speed: 200 // px/sec
+      };
+
+      coin = {
+        x: random(20, width - 20),
+        y: random(20, height - 20),
+        r: 10
+      };
+
+      enemy = {
+        x: 40,
+        y: 40,
+        r: 15,
+        baseSpeed: 120, // Гра+: початкова швидкість 120 px/sec
+        currentSpeed: 120
+      };
+    }
+
+    function draw() {
+      background(30, 30, 46);
+
+      // Розрахунок дельта-часу (dt) в секундах для плавної анімації
+      let currentTime = millis();
+      let dt = (currentTime - lastFrameTime) / 1000;
+      lastFrameTime = currentTime;
+
+      if (!gameOver) {
+        updatePlayer(dt);
+        updateEnemy(dt);
+        checkCollisions();
+      }
+
+      // Малювання об'єктів
+      // 1. Монета
+      fill(249, 226, 175);
+      stroke(250, 179, 135);
+      strokeWeight(2);
+      ellipse(coin.x, coin.y, coin.r * 2);
+
+      // 2. Ворог (Червоне коло)
+      fill(243, 139, 168);
+      stroke(235, 111, 146);
+      ellipse(enemy.x, enemy.y, enemy.r * 2);
+
+      // 3. Гравець
+      fill(140, 170, 238);
+      stroke(180, 190, 254);
+      ellipse(player.x, player.y, player.r * 2);
+
+      // Інтерфейс (Рахунок та швидкість)
+      noStroke();
+      fill(205, 214, 244);
+      textSize(16);
+      textAlign(LEFT, TOP);
+      text(`Очки: ${score}`, 15, 15);
+      text(`Швидкість ворога: ${Math.round(enemy.currentSpeed)} px/s`, 15, 35);
+
+      // Екран GameOver
+      if (gameOver) {
+        fill(0, 0, 0, 180);
+        rect(0, 0, width, height);
+
+        fill(243, 139, 168);
+        textSize(32);
+        textAlign(CENTER, CENTER);
+        text("GAME OVER", width / 2, height / 2 - 20);
+
+        fill(205, 214, 244);
+        textSize(16);
+        text(`Ваш рахунок: ${score}`, width / 2, height / 2 + 15);
+        text("Натисніть R або ПРОБІЛ для перезапуску", width / 2, height / 2 + 45);
+      }
+    }
+
+    function updatePlayer(dt) {
+      let dx = 0;
+      let dy = 0;
+
+      if (keyIsDown(LEFT_ARROW) || keyIsDown(65)) dx -= 1; // A
+      if (keyIsDown(RIGHT_ARROW) || keyIsDown(68)) dx += 1; // D
+      if (keyIsDown(UP_ARROW) || keyIsDown(87)) dy -= 1; // W
+      if (keyIsDown(DOWN_ARROW) || keyIsDown(83)) dy += 1; // S
+
+      // Нормалізація діагонального руху
+      if (dx !== 0 && dy !== 0) {
+        dx *= 0.7071;
+        dy *= 0.7071;
+      }
+
+      player.x += dx * player.speed * dt;
+      player.y += dy * player.speed * dt;
+
+      // Обмеження екраном
+      player.x = constrain(player.x, player.r, width - player.r);
+      player.y = constrain(player.y, player.r, height - player.r);
+    }
+
+    function updateEnemy(dt) {
+      // Гра+: за кожні +5 очок ворог стає на 10 px/сек швидшим
+      enemy.currentSpeed = enemy.baseSpeed + Math.floor(score / 5) * 10;
+
+      // Рух ворога у бік гравця
+      let dirX = player.x - enemy.x;
+      let dirY = player.y - enemy.y;
+      let distance = dist(player.x, player.y, enemy.x, enemy.y);
+
+      if (distance > 0) {
+        enemy.x += (dirX / distance) * enemy.currentSpeed * dt;
+        enemy.y += (dirY / distance) * enemy.currentSpeed * dt;
+      }
+    }
+
+    function checkCollisions() {
+      // Перевірка збору монети
+      let dCoin = dist(player.x, player.y, coin.x, coin.y);
+      if (dCoin < player.r + coin.r) {
+        score++;
+        playCoinSound();
+        // Спавн монети в новому місці
+        coin.x = random(20, width - 20);
+        coin.y = random(20, height - 20);
+      }
+
+      // Перевірка зіткнення з ворогом (Гра+: Game Over)
+      let dEnemy = dist(player.x, player.y, enemy.x, enemy.y);
+      if (dEnemy < player.r + enemy.r) {
+        gameOver = true;
+      }
+    }
+
+    function keyPressed() {
+      if (gameOver && (key === 'r' || key === 'R' || keyCode === 32)) {
+        resetGame();
+      }
+    }
+  </script>
+</body>
+</html>
