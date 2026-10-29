@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Завдання 4: Спрайти та UI</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1e1e2e;
+      color: #cdd6f4;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    #canvas-container {
+      border: 3px solid #89b4fa;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .ui-panel {
+      margin-top: 15px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      background: #313244;
+      padding: 12px 24px;
+      border-radius: 8px;
+    }
+
+    .ui-panel label {
+      font-weight: bold;
+    }
+
+    button {
+      background: #89b4fa;
+      color: #11111b;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #b4befe;
+    }
+
+    .instructions {
+      margin-top: 10px;
+      color: #a6adc8;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <div class="ui-panel">
+    <div>
+      <label for="scale-slider">Масштаб: </label>
+      <input type="range" id="scale-slider" min="0.5" max="2.5" step="0.1" value="1">
+      <span id="scale-val">1.0x</span>
+    </div>
+    <button id="flip-btn">Flip (Розвернути)</button>
+  </div>
+
+  <div class="instructions">
+    Клавіші керування анімацією: <b>1</b> — Стояти | <b>2</b> — Ходьба | <b>3</b> — Біг
+  </div>
+
+  <script>
+    let currentAnim = 'idle'; // 'idle', 'walk', 'run'
+    let isFlipped = false;
+    let animScale = 1;
+
+    let frameIndex = 0;
+    let lastFrameTime = 0;
+
+    // Конфігурація анімацій
+    const animConfig = {
+      idle: { fps: 4, frames: 2, hitboxW: 30, hitboxH: 50 },
+      walk: { fps: 11, frames: 4, hitboxW: 40, hitboxH: 48 },
+      run:  { fps: 15, frames: 4, hitboxW: 50, hitboxH: 40 }
+    };
+
+    function setup() {
+      const canvas = createCanvas(600, 350);
+      canvas.parent('canvas-container');
+
+      // Налаштування UI елементів
+      const slider = document.getElementById('scale-slider');
+      const scaleVal = document.getElementById('scale-val');
+      const flipBtn = document.getElementById('flip-btn');
+
+      slider.addEventListener('input', (e) => {
+        animScale = parseFloat(e.target.value);
+        scaleVal.textContent = `${animScale.toFixed(1)}x`;
+      });
+
+      flipBtn.addEventListener('click', () => {
+        isFlipped = !isFlipped;
+      });
+    }
+
+    function draw() {
+      background(30, 30, 46);
+
+      // Сітка фону для наочності
+      stroke(45, 45, 68);
+      strokeWeight(1);
+      for (let x = 0; x < width; x += 40) line(x, 0, x, height);
+      for (let y = 0; y < height; y += 40) line(0, y, width, y);
+
+      // Оновлення кадрів залежно від FPS анімації
+      let config = animConfig[currentAnim];
+      let interval = 1000 / config.fps;
+
+      if (millis() - lastFrameTime > interval) {
+        frameIndex = (frameIndex + 1) % config.frames;
+        lastFrameTime = millis();
+      }
+
+      // Центр екрана для малювання
+      push();
+      translate(width / 2, height / 2);
+      scale(animScale);
+      if (isFlipped) scale(-1, 1);
+
+      // 1. Малювання спрайта персонажа (Процедурно під кожен кадр/анімацію)
+      drawCharacterSprite(currentAnim, frameIndex);
+
+      // 2. Малювання Hitbox (адаптивного під анімацію)
+      noFill();
+      stroke(243, 139, 168); // Червона рамка хитбоксу
+      strokeWeight(2 / animScale);
+      rectMode(CENTER);
+      rect(0, 0, config.hitboxW, config.hitboxH);
+
+      pop();
+
+      // Інформаційний текстовий UI
+      noStroke();
+      fill(205, 214, 244);
+      textSize(14);
+      textAlign(LEFT, TOP);
+      text(`Анімація: ${currentAnim.toUpperCase()} (${config.fps} FPS)`, 15, 15);
+      text(`Кадр: ${frameIndex + 1} / ${config.frames}`, 15, 35);
+    }
+
+    // Клавіатурне перемикання режимів
+    function keyPressed() {
+      if (key === '1') {
+        currentAnim = 'idle';
+        frameIndex = 0;
+      } else if (key === '2') {
+        currentAnim = 'walk';
+        frameIndex = 0;
+      } else if (key === '3') {
+        currentAnim = 'run';
+        frameIndex = 0;
+      }
+    }
+
+    // Векторне малювання спрайта персонажа
+    function drawCharacterSprite(anim, frame) {
+      stroke(0);
+      strokeWeight(2);
+      fill(137, 180, 250); // Синій тулуб
+
+      if (anim === 'idle') {
+        let offsetY = (frame === 1) ? -2 : 0;
+        // Голова
+        fill(249, 226, 175);
+        ellipse(0, -18 + offsetY, 20, 20);
+        // Тіло
+        fill(137, 180, 250);
+        rectMode(CENTER);
+        rect(0, 5 + offsetY, 20, 26, 4);
+        // Ноги
+        line(-5, 18 + offsetY, -5, 25);
+        line(5, 18 + offsetY, 5, 25);
+
+      } else if (anim === 'walk') {
+        let legOffset = (frame % 2 === 0) ? 8 : -8;
+        // Голова
+        fill(249, 226, 175);
+        ellipse(0, -18, 20, 20);
+        // Тіло
+        fill(137, 180, 250);
+        rectMode(CENTER);
+        rect(0, 5, 20, 26, 4);
+        // Ноги у русі
+        line(-4, 18, -4 + legOffset, 24);
+        line(4, 18, 4 - legOffset, 24);
+
+      } else if (anim === 'run') {
+        let legOffset = (frame % 2 === 0) ? 14 : -14;
+        push();
+        rotate(0.2); // Нахил тулуба при бігу
+        // Голова
+        fill(249, 226, 175);
+        ellipse(2, -16, 20, 20);
+        // Тіло
+        fill(250, 179, 135); // Помаранчевий колір для бігу
+        rectMode(CENTER);
+        rect(0, 5, 24, 20, 4);
+        // Ноги (широкий крок)
+        line(-6, 15, -6 + legOffset, 20);
+        line(6, 15, 6 - legOffset, 20);
+        pop();
+      }
+    }
+  </script>
+</body>
+</html>
